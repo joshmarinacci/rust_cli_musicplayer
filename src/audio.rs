@@ -75,21 +75,11 @@ fn process_metadata(track: &mut TrackData, md2: &Metadata)  {
             if let Some(std) = tag.std_key {
                 // println!("std {:?} = {}",std, tag.value);
                 match std {
-                    StandardTagKey::Album => track.album = Some(tag.value.to_string()),
-                    StandardTagKey::Artist => track.artist = Some(tag.value.to_string()),
-                    StandardTagKey::TrackTitle => track.title = Some(tag.value.to_string()),
-                    StandardTagKey::TrackNumber => {
-                        // println!("have track number {}",tag.value);
-                        // if tag.value.to_string().contains('/') {
-                            // println!("it has a slash. must split it")
-                        // } else {
-                            track.number = Some(tag.value.to_string())
-                        // }
-                    },
-                    StandardTagKey::TrackTotal => {
-                        println!("have track total {}", tag.value);
-                        track.total = Some(tag.value.to_string());
-                    }
+                    StandardTagKey::Album       => track.album  = Some(tag.value.to_string()),
+                    StandardTagKey::Artist      => track.artist = Some(tag.value.to_string()),
+                    StandardTagKey::TrackTitle  => track.title  = Some(tag.value.to_string()),
+                    StandardTagKey::TrackNumber => track.number = Some(tag.value.to_string()),
+                    StandardTagKey::TrackTotal  => track.total  = Some(tag.value.to_string()),
                     _ => {
                         // println!("other");
                     }
