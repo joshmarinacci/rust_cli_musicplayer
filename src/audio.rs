@@ -7,7 +7,13 @@ use std::thread;
 use std::time::Duration;
 use symphonia::core::formats::FormatReader;
 use symphonia::core::codecs::Decoder;
-use crate::{AudioOutput, CODEC_TYPE_NULL, DecoderOptions, Error, FormatOptions, Hint, MediaSourceStream, MetadataOptions, output, ProbedMetadata, StandardTagKey, TrackData};
+use crate::{AudioOutput, CODEC_TYPE_NULL, DecoderOptions, Error, FormatOptions, get_or, Hint, MediaSourceStream, MetadataOptions, output, ProbedMetadata, StandardTagKey, TrackData};
+
+pub enum AudioCommand {
+    Play(TrackData),
+    TogglePlayPause,
+    Quit
+}
 
 pub fn scan_for_tracks(music_dir: &str) -> Vec<TrackData> {
     fn is_hidden(entry:&DirEntry) -> bool {
@@ -72,7 +78,7 @@ fn process_metadata(probed: &mut ProbedMetadata, buf: PathBuf) -> TrackData {
     return track;
 }
 
-pub fn play_audio(track: &TrackData, audio_output: &mut Option<Box<dyn AudioOutput>>, rec: Receiver<String>) -> crate::Result<()>{
+pub fn play_audio(track: &TrackData, audio_output: &mut Option<Box<dyn AudioOutput>>, rec: Receiver<AudioCommand>) -> crate::Result<()>{
     let src = File::open(&track.path).expect("couldnt open the file");
     let mss = MediaSourceStream::new(Box::new(src), Default::default());
 
@@ -96,8 +102,8 @@ pub fn play_audio(track: &TrackData, audio_output: &mut Option<Box<dyn AudioOutp
         // Create a decoder for the track.
         let mut decoder = get_codecs().make(&track.codec_params, &dec_opts)?;
 
-        let tb = track.codec_params.time_base;
-        let dur = track.codec_params.n_frames.map(|frames|track.codec_params.start_ts+frames);
+        // let tb = track.codec_params.time_base;
+        // let dur = track.codec_params.n_frames.map(|frames|track.codec_params.start_ts+frames);
 
         // Store the track identifier, it will be used to filter packets.
         let track_id = track.id;
@@ -107,12 +113,15 @@ pub fn play_audio(track: &TrackData, audio_output: &mut Option<Box<dyn AudioOutp
         loop {
             if let Ok(msg) = rec.try_recv() {
                 // println!("got the play pause over here");
-                if msg.eq("playpause") {
-                    running = !running;
-                }
-                if msg.eq("quit") {
-                    running = false;
-                    break;
+                match msg {
+                    AudioCommand::Play(track) => {
+                        println!("got a new track to play {}", get_or(&track.title,"unknown title"));
+                    }
+                    AudioCommand::TogglePlayPause => running = !running,
+                    AudioCommand::Quit => {
+                        running = false;
+                        break;
+                    }
                 }
             }
             if !running {
