@@ -98,13 +98,7 @@ fn process_metadata(track: &mut TrackData, md2: &Metadata)  {
 
                         }
                     },
-                    StandardTagKey::TrackTotal => {
-                        track.total = if let Ok(val) = tag.value.to_string().parse::<i32>() {
-                            val
-                        } else {
-                            0
-                        }
-                    },
+                    StandardTagKey::TrackTotal => track.total = tag.value.to_string().parse::<i32>().unwrap_or(0),
                     _ => {
                         // println!("other");
                     }
