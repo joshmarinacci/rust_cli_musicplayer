@@ -4,7 +4,8 @@ mod audio;
 
 use std::{env, fs, thread};
 use std::borrow::Borrow;
-use std::collections::HashMap;
+use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
@@ -32,6 +33,7 @@ pub struct MusicLibrary {
     pub tracks:Vec<Rc<TrackData>>,
     pub artists:HashMap<String,Vec<Rc<TrackData>>>,
     pub albums:HashMap<String,Vec<Rc<TrackData>>>,
+    pub albums_by_artist:HashMap<String,HashSet<String>>,
 }
 
 impl MusicLibrary {
@@ -40,25 +42,30 @@ impl MusicLibrary {
             tracks: vec![],
             artists: Default::default(),
             albums: Default::default(),
+            albums_by_artist: Default::default()
         };
 
         for track in &tracks {
             let tr = Rc::new(track.clone());
             lib.tracks.push(Rc::clone(&tr));
-            if let Some(st) = &track.artist {
-                if !lib.artists.contains_key(st) {
-                    lib.artists.insert(st.clone(),vec![]);
-                }
-                let mut artist = lib.artists.get_mut(st).unwrap();
-                artist.push(Rc::clone(&tr));
+            if !lib.artists.contains_key(track.artist.as_str()) {
+                lib.artists.insert(track.artist.clone(),vec![]);
             }
-            if let Some(st) = &track.album {
-                if !lib.albums.contains_key(st) {
-                    lib.albums.insert(st.clone(),vec![]);
-                }
-                let mut album = lib.albums.get_mut(st).unwrap();
-                album.push(Rc::clone(&tr));
+            // insert the artist
+            let mut artist = lib.artists.get_mut(&track.artist).unwrap();
+            artist.push(Rc::clone(&tr));
+
+            if !lib.albums.contains_key(track.album.as_str()) {
+                lib.albums.insert(track.album.clone(), vec![]);
             }
+            let mut album = lib.albums.get_mut(&track.album).unwrap();
+            album.push(Rc::clone(&tr));
+
+            if !lib.albums_by_artist.contains_key(&track.artist) {
+                lib.albums_by_artist.insert(track.artist.clone(), HashSet::new());
+            }
+            let al_ar = lib.albums_by_artist.get_mut(&track.artist).unwrap();
+            al_ar.insert(track.album.clone());
         }
 
         lib
@@ -79,7 +86,6 @@ fn main() -> Result<()>{
 
     let mut tracks:Vec<TrackData> = audio::scan_for_tracks(music_dir);
     let lib = MusicLibrary::from_tracks(tracks);
-    // let good_tracks:Vec<&TrackData> = lib.tracks.iter().filter(|t|t.title != None).collect();
     start_interface(lib)
 }
 fn start_interface(lib: MusicLibrary) -> Result<()>{
@@ -98,9 +104,9 @@ fn start_interface(lib: MusicLibrary) -> Result<()>{
     loop {
         term.clear_screen()?;
         term.write_line(&format!("{}  /  {}  -- {}",
-                                 get_or(&current_track.title,"???"),
-                                 get_or(&current_track.artist, "???"),
-                                 get_or(&current_track.number, "???"),
+                                 &current_track.title,
+                                 &current_track.artist,
+                                 &current_track.number,
 
         ))?;
         term.write_line(&format!("playing = {}   p=toggle play/pause  q=quit", playing))?;
@@ -128,22 +134,40 @@ fn start_interface(lib: MusicLibrary) -> Result<()>{
 }
 
 fn choose_track(lib: &MusicLibrary) -> Result<TrackData> {
-    let albums = lib.albums.keys().collect::<Vec<&String>>();
+    let mut artists = lib.artists.keys().collect::<Vec<&String>>();
+    artists.sort();
+    let artist_index = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("choose artist")
+        .items(artists.as_slice())
+        .interact()?;
+    let artist_name = artists[artist_index];
+
+    println!("chose the artist {}",artist_name);
+
+
+    let mut albums = lib.albums_by_artist.get(artist_name).unwrap().iter().collect::<Vec<&String>>();
+    albums.sort();
     let album_index = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Choose an album")
         .default(0)
         .items(albums.as_slice())
         .interact()?;
 
-    let album_name = albums[album_index];
+    let album_name = albums[album_index].clone();
 
     println!("chose album name {}", album_name);
 
-    let traks = lib.albums.get(album_name).unwrap();
+    let mut traks = lib.albums.get(&album_name).unwrap();
+    let mut tracks:Vec<Rc<TrackData>> = vec![];
+    for tr in traks {
+        tracks.push(tr.clone())
+    }
+    tracks.sort_by(|a,b| a.number.cmp(&b.number));
+    let display_tracks = tracks.iter().map(|t|format!("{}/{} {}",t.number,t.total,t.title)).collect::<Vec<String>>();
     let track_index = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("choose track")
         .default(0)
-        .items(traks)
+        .items(display_tracks.as_slice())
         .interact()?;
 
     let track = (*traks[track_index].clone()).clone();

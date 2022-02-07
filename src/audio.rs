@@ -46,11 +46,11 @@ pub fn scan_for_tracks(music_dir: &str) -> Vec<TrackData> {
                 // println!("checking the metadata 2 {:?}",&probed.format.metadata());
                 let mut track = TrackData {
                     path: ent.path().to_path_buf(),
-                    artist: None,
-                    album: None,
-                    title: None,
-                    number: None,
-                    total: None
+                    artist: String::from("?"),
+                    album: String::from("?"),
+                    title: String::from("?"),
+                    number: -1,
+                    total: -1,
                 };
                 process_metadata(&mut track,&mut probed.format.metadata());
                 if let Some(md) = &probed.metadata.get() {
@@ -75,11 +75,36 @@ fn process_metadata(track: &mut TrackData, md2: &Metadata)  {
             if let Some(std) = tag.std_key {
                 // println!("std {:?} = {}",std, tag.value);
                 match std {
-                    StandardTagKey::Album       => track.album  = Some(tag.value.to_string()),
-                    StandardTagKey::Artist      => track.artist = Some(tag.value.to_string()),
-                    StandardTagKey::TrackTitle  => track.title  = Some(tag.value.to_string()),
-                    StandardTagKey::TrackNumber => track.number = Some(tag.value.to_string()),
-                    StandardTagKey::TrackTotal  => track.total  = Some(tag.value.to_string()),
+                    StandardTagKey::Album       => track.album  = tag.value.to_string(),
+                    StandardTagKey::Artist      => track.artist = tag.value.to_string(),
+                    StandardTagKey::TrackTitle  => track.title  = tag.value.to_string(),
+                    StandardTagKey::TrackNumber => {
+                        track.number = 0;
+                        let st = tag.value.to_string();
+                        track.number = if let Ok(val) = st.parse::<i32>() { val } else {  0  };
+                        if st.contains('/') {
+                            for (i,part) in st.split('/').enumerate() {
+                                if i == 0 {
+                                    if let Ok(n) = part.parse::<i32>() {
+                                        track.number = n;
+                                    }
+                                }
+                                if i == 1 {
+                                    if let Ok(n) = part.parse::<i32>() {
+                                        track.total = n;
+                                    }
+                                }
+                            }
+
+                        }
+                    },
+                    StandardTagKey::TrackTotal => {
+                        track.total = if let Ok(val) = tag.value.to_string().parse::<i32>() {
+                            val
+                        } else {
+                            0
+                        }
+                    },
                     _ => {
                         // println!("other");
                     }
