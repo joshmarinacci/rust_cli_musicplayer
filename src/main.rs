@@ -27,24 +27,26 @@ use crate::common::get_or;
 use crate::output::AudioOutput;
 
 fn main() -> Result<()>{
+    let args:Vec<String> = env::args().collect();
+    for arg in args.iter() {
+        println!("arg {}",arg);
+    }
+    if let None = args.get(1) {
+        println!("you must specify a directory full of music");
+        return Ok(());
+    }
+    let music_dir = args.get(1).unwrap();
     let term = Term::stdout();
-    term.write_line("Hello, world!")?;
-    // scan directory for all files
-    // filter by file extension
-    // scan each file for metadata
-    // print out metadata
 
-    const music_dir: &str = "/Users/joshua.marinacci/Music/Music/Media.localized/Music";
+
     let mut tracks:Vec<TrackData> = audio::scan_for_tracks(music_dir);
     let good_tracks:Vec<&TrackData> = tracks.iter().filter(|t|t.title != None).collect();
     let track = choose_track(&good_tracks)?;
     let (send,rec):(Sender<AudioCommand>, Receiver<AudioCommand>) = channel();
 
-    // term.write_line(&format!("going to play {:?}", track))?;
     let mut playing = true;
     let mut current_track = track.clone();
     let handler = thread::spawn(move || {
-        // println!("in the audio thread");
         let mut audio_output:Option<Box<dyn output::AudioOutput>> = None;
         audio::play_audio(&track, &mut audio_output, rec);
     });
@@ -52,9 +54,12 @@ fn main() -> Result<()>{
 
     loop {
         term.clear_screen()?;
-        term.write_line(&format!("{}  /  {}",
+        term.write_line(&format!("{}  /  {}  -- {}",
                                  get_or(&current_track.title,"???"),
-                                 get_or(&current_track.artist, "???")))?;
+                                 get_or(&current_track.artist, "???"),
+            get_or(&current_track.number, "???"),
+
+        ))?;
         term.write_line(&format!("playing = {}   p=toggle play/pause  q=quit", playing))?;
         if let Ok(key) = term.read_key() {
             match key {

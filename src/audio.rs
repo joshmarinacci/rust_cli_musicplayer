@@ -7,6 +7,7 @@ use std::thread;
 use std::time::Duration;
 use symphonia::core::formats::FormatReader;
 use symphonia::core::codecs::Decoder;
+use symphonia::core::meta::Metadata;
 use symphonia::core::probe::ProbeResult;
 use crate::{AudioOutput, CODEC_TYPE_NULL, DecoderOptions, Error, FormatOptions, get_or, Hint, MediaSourceStream, MetadataOptions, output, ProbedMetadata, StandardTagKey, TrackData};
 
@@ -21,7 +22,7 @@ pub fn scan_for_tracks(music_dir: &str) -> Vec<TrackData> {
         entry.file_name().to_str().map(|s|s.starts_with(".")).unwrap_or(false)
     }
     let mut tracks:Vec<TrackData> = vec![];
-
+    println!("scainng the dir {}",music_dir);
     let walker = WalkDir::new(music_dir).into_iter();
     for entry in walker.filter_entry(|e|!is_hidden(e)) {
         let ent = entry.unwrap();
@@ -35,11 +36,29 @@ pub fn scan_for_tracks(music_dir: &str) -> Vec<TrackData> {
 
             let mut hint = Hint::new();
             hint.with_extension("mp3");
+            hint.with_extension("m4a");
             let meta_opts: MetadataOptions = Default::default();
             let fmt_opts: FormatOptions = Default::default();
             if let Ok(probed) = &mut get_probe()
                 .format(&hint, mss, &fmt_opts, &meta_opts) {
-                tracks.push(process_metadata(&mut probed.metadata, ent.path().to_path_buf()));
+                // println!("success");
+                // println!("checking the metadata 1 {:?}",&probed.metadata.get());
+                // println!("checking the metadata 2 {:?}",&probed.format.metadata());
+                let mut track = TrackData {
+                    path: ent.path().to_path_buf(),
+                    artist: None,
+                    album: None,
+                    title: None,
+                    number: None,
+                    total: None
+                };
+                process_metadata(&mut track,&mut probed.format.metadata());
+                if let Some(md) = &probed.metadata.get() {
+                    process_metadata(&mut track, &md);
+                }
+                tracks.push(track);
+            } else {
+                println!("failed");
             }
 
         }
@@ -49,34 +68,35 @@ pub fn scan_for_tracks(music_dir: &str) -> Vec<TrackData> {
 
 }
 
-fn process_metadata(probed: &mut ProbedMetadata, buf: PathBuf) -> TrackData {
-    let mut track = TrackData {
-        path:buf,
-        artist: None,
-        album: None,
-        title: None
-    };
-    if let Some(md) = probed.get() {
-        // println!("proped returned {:?}", md);
-        if let Some(md) = md.current() {
-            for tag in md.tags() {
-                // println!("tag {} = {}   or maybe {:?}",tag.key , tag.value, tag.std_key);
-                if let Some(std) = tag.std_key {
-                    // println!("std {:?} = {}",std, tag.value);
-                    match std {
-                        StandardTagKey::Album => track.album = Some(tag.value.to_string()),
-                        StandardTagKey::Artist => track.artist = Some(tag.value.to_string()),
-                        StandardTagKey::TrackTitle => track.title = Some(tag.value.to_string()),
-                        _ => {
-                            // println!("other");
-                        }
+fn process_metadata(track: &mut TrackData, md2: &Metadata)  {
+    if let Some(md) = md2.current() {
+        for tag in md.tags() {
+            // println!("tag {} = {}   or maybe {:?}",tag.key , tag.value, tag.std_key);
+            if let Some(std) = tag.std_key {
+                // println!("std {:?} = {}",std, tag.value);
+                match std {
+                    StandardTagKey::Album => track.album = Some(tag.value.to_string()),
+                    StandardTagKey::Artist => track.artist = Some(tag.value.to_string()),
+                    StandardTagKey::TrackTitle => track.title = Some(tag.value.to_string()),
+                    StandardTagKey::TrackNumber => {
+                        // println!("have track number {}",tag.value);
+                        // if tag.value.to_string().contains('/') {
+                            // println!("it has a slash. must split it")
+                        // } else {
+                            track.number = Some(tag.value.to_string())
+                        // }
+                    },
+                    StandardTagKey::TrackTotal => {
+                        println!("have track total {}", tag.value);
+                        track.total = Some(tag.value.to_string());
+                    }
+                    _ => {
+                        // println!("other");
                     }
                 }
             }
         }
     }
-
-    return track;
 }
 
 struct AudioContext {
@@ -86,15 +106,12 @@ struct AudioContext {
 }
 pub fn play_audio(track: &TrackData, audio_output: &mut Option<Box<dyn AudioOutput>>, rec: Receiver<AudioCommand>) -> crate::Result<()>{
     let mut ctx = open_audio_track(track);
-
-    println!("got the track id {}",ctx.track_id);
     let mut running = true;
     loop {
         if let Ok(msg) = rec.try_recv() {
             // println!("got the play pause over here");
             match msg {
                 AudioCommand::Play(track) => {
-                    println!("got a new track to play {}", get_or(&track.title,"unknown title"));
                     ctx = open_audio_track(&track);
                 }
                 AudioCommand::TogglePlayPause => running = !running,
@@ -133,13 +150,13 @@ pub fn play_audio(track: &TrackData, audio_output: &mut Option<Box<dyn AudioOutp
                     // Get the audio buffer specification. This is a description of the decoded
                     // audio buffer's sample format and sample rate.
                     let spec = *decoded.spec();
-                    println!("spec is {:?}",spec);
+                    // println!("spec is {:?}",spec);
 
                     // Get the capacity of the decoded buffer. Note that this is capacity, not
                     // length! The capacity of the decoded buffer is constant for the life of the
                     // decoder, but the length is not.
                     let duration = decoded.capacity() as u64;
-                    println!("duraction is {}",duration);
+                    // println!("duraction is {}",duration);
 
                     // Try to open the audio output.
                     audio_output.replace(output::try_open(spec, duration).unwrap());

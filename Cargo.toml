@@ -7,10 +7,8 @@ edition = "2021"
 
 [dependencies]
 walkdir = "2.3.2"
-symphonia = { version = "0.5", features = [ "mp3"] }
+symphonia = { version = "0.5", features = [ "mp3", "aac", "symphonia-codec-aac", "isomp4"] }
 dialoguer = "0.9.0"
-#symphonia = "0.5.0"
-#symphonia-bundle-mp3 = "0.5.0"
 log = { version = "0.4", features = ["release_max_level_info"] }
 console = "0.15.0"
 [target.'cfg(not(target_os = "linux"))'.dependencies]
